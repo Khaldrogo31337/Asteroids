@@ -2,16 +2,33 @@ import random
 
 import pygame
 from circleshape import CircleShape
-from constants import LINE_WIDTH, ASTEROID_MIN_RADIUS, ASTEROID_KINDS, SCORE_ASTEROID_BASE
+from constants import (
+    LINE_WIDTH,
+    ASTEROID_MIN_RADIUS,
+    ASTEROID_KINDS,
+    SCORE_ASTEROID_BASE,
+    ASTEROID_LUMP_POINTS,
+    ASTEROID_LUMP_VARIANCE,
+)
 from logger import log_event
 
 
 class Asteroid(CircleShape):
     def __init__(self, x: float, y: float, radius: float) -> None:
         super().__init__(x, y, radius)
+        self.lump_rotation = random.uniform(0, 360)
+        self.lump_offsets = [
+            random.uniform(1 - ASTEROID_LUMP_VARIANCE, 1 + ASTEROID_LUMP_VARIANCE)
+            for _ in range(ASTEROID_LUMP_POINTS)
+        ]
 
     def draw(self, screen: pygame.Surface) -> None:
-        pygame.draw.circle(screen, "white", self.position, self.radius, LINE_WIDTH)
+        points = []
+        for i, offset in enumerate(self.lump_offsets):
+            angle = self.lump_rotation + i * (360 / len(self.lump_offsets))
+            point = self.position + pygame.Vector2(0, 1).rotate(angle) * self.radius * offset
+            points.append(point)
+        pygame.draw.polygon(screen, "white", points, LINE_WIDTH)
 
     def update(self, dt: float) -> None:
         self.position += self.velocity * dt

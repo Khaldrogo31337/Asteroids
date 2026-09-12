@@ -4,7 +4,9 @@ from constants import (
     PLAYER_RADIUS,
     LINE_WIDTH,
     PLAYER_TURN_SPEED,
-    PLAYER_SPEED,
+    PLAYER_ACCELERATION,
+    PLAYER_MAX_SPEED,
+    PLAYER_DRAG,
     PLAYER_SHOOT_SPEED,
     PLAYER_SHOOT_COOLDOWN_SECONDS,
     PLAYER_RESPAWN_INVULNERABILITY_SECONDS,
@@ -51,11 +53,20 @@ class Player(CircleShape):
         self.rotation += PLAYER_TURN_SPEED * dt
 
     def move(self, dt: float) -> None:
-        speed = PLAYER_SPEED * (SPEED_BOOST_MULTIPLIER if self.speed_boost_timer > 0 else 1)
-        unit_vector = pygame.Vector2(0, 1)
-        rotated_vector = unit_vector.rotate(self.rotation)
-        rotated_with_speed_vector = rotated_vector * speed * dt
-        self.position += rotated_with_speed_vector
+        max_speed = PLAYER_MAX_SPEED * (SPEED_BOOST_MULTIPLIER if self.speed_boost_timer > 0 else 1)
+        direction = pygame.Vector2(0, 1).rotate(self.rotation)
+        sign = 1 if dt >= 0 else -1
+        self.velocity += direction * PLAYER_ACCELERATION * abs(dt) * sign
+        if self.velocity.length() > max_speed:
+            self.velocity.scale_to_length(max_speed)
+
+    def _apply_drag(self, dt: float) -> None:
+        drag = PLAYER_DRAG * dt
+        speed = self.velocity.length()
+        if speed <= drag:
+            self.velocity = pygame.Vector2(0, 0)
+        else:
+            self.velocity -= self.velocity.normalize() * drag
 
     def is_invulnerable(self) -> bool:
         return self.invulnerable_timer > 0 or self.shield_timer > 0
@@ -130,4 +141,40 @@ class Player(CircleShape):
         if keys[pygame.K_3]:
             self.switch_weapon(WEAPON_RAPID)
 
+        self._apply_drag(dt)
+        self.position += self.velocity * dt
         self.wrap_position()
+
+    def collides_with(self, other: "CircleShape") -> bool:
+        triangle = self.triangle()
+        if _point_in_triangle(other.position, triangle):
+            return True
+        for i in range(len(triangle)):
+            a = triangle[i]
+            b = triangle[(i + 1) % len(triangle)]
+            if _point_segment_distance(other.position, a, b) <= other.radius:
+                return True
+        return False
+
+
+def _point_in_triangle(p: pygame.Vector2, triangle: list[pygame.Vector2]) -> bool:
+    a, b, c = triangle
+
+    def sign(p1: pygame.Vector2, p2: pygame.Vector2, p3: pygame.Vector2) -> float:
+        return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+
+    d1 = sign(p, a, b)
+    d2 = sign(p, b, c)
+    d3 = sign(p, c, a)
+    has_neg = d1 < 0 or d2 < 0 or d3 < 0
+    has_pos = d1 > 0 or d2 > 0 or d3 > 0
+    return not (has_neg and has_pos)
+
+
+def _point_segment_distance(p: pygame.Vector2, a: pygame.Vector2, b: pygame.Vector2) -> float:
+    ab = b - a
+    if ab.length_squared() == 0:
+        return p.distance_to(a)
+    t = max(0, min(1, (p - a).dot(ab) / ab.length_squared()))
+    closest = a + ab * t
+    return p.distance_to(closest)
